@@ -1,0 +1,37 @@
+version: 2
+models:
+  - name: dim_customer
+    columns:
+      - name: customer_id
+        tests: [unique, not_null]   # 如果一個客戶對應多個 segment，這個測試會失敗
+  - name: dim_product
+    columns:
+      - name: product_key
+        tests: [unique, not_null]
+  - name: dim_location
+    columns:
+      - name: location_key
+        tests: [unique, not_null]
+  - name: dim_date
+    columns:
+      - name: date_day
+        tests: [unique, not_null]
+  - name: fact_sales
+    columns:
+      - name: row_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests:
+          - relationships: {to: ref('dim_customer'), field: customer_id}
+      - name: product_key
+        tests:
+          - relationships: {to: ref('dim_product'), field: product_key}
+      - name: location_key
+        tests:
+          - relationships: {to: ref('dim_location'), field: location_key}
+      - name: order_date
+        tests:
+          - relationships: {to: ref('dim_date'), field: date_day}
+      - name: discount_group
+        tests:
+          - accepted_values: {values: ['無折扣', '1-20%', '30% 以上']}

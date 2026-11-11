@@ -1,0 +1,10 @@
+version: 2
+models:
+  - name: stg_superstore
+    columns:
+      - name: row_id
+        tests: [unique, not_null]
+      - name: order_date
+        tests: [not_null]
+      - name: ship_date
+        tests: [not_null]
