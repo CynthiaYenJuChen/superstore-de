@@ -6,3 +6,4 @@ target/
 logs/
 dbt_packages/
 .user.yml
+note

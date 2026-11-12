@@ -68,8 +68,6 @@ erDiagram
 | `dim_location` | 一個地點（城市 + 州） | `location_key` | 604 |
 | `dim_date` | 一天 | `date_day` | 1,464 |
 
-`fact_sales` 包含 `sales`、`quantity`、`discount`、`profit`，以及衍生欄位 `discount_group`（無折扣 / 1-20% / 30% 以上）和用來排序的 `discount_group_order`。
-
 ## 資料處理決策
 
 在探勘原始資料時發現以下問題，處理方式如下：
@@ -82,8 +80,8 @@ erDiagram
 | 32 個 `Product ID` 對應到不只一個商品名稱 | 商品以「ID + 名稱」為單位，產生 `product_key = md5(product_id \| product_name)` | `stg_superstore` |
 | 57 個城市名稱出現在不只一個州（例如 Springfield 出現在 4 個州） | 地點以「城市 + 州 + 區域」為單位，產生 `location_key` | `stg_superstore` |
 | 報表需要連續的日曆 | 從最早訂單日到最晚出貨日，每天產生一列 | `dim_date` |
+| 報表需要依折扣區間分析，但文字標籤直接排序會亂掉 | 新增 `discount_group`（無折扣 / 1-20% / 30% 以上），並加上數字欄位 `discount_group_order` 指定排序 | `fact_sales` |
 
-> **假設**：「除了 Row ID 外完全相同的兩筆明細是重複輸入」是業務判斷。如果實際上是同一張訂單中分兩次購買了相同商品，就不應該刪除。
 
 ## 資料品質測試
 
