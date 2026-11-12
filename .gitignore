@@ -7,3 +7,5 @@ logs/
 dbt_packages/
 .user.yml
 note
+airflow/.env
+airflow/config/
