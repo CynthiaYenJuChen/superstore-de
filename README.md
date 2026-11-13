@@ -2,7 +2,7 @@
 
 把 Superstore 銷售資料（9,994 筆訂單明細）從原始 CSV 轉換成**經過測試的星狀模型**，供 Power BI 使用的資料工程專案。
 
-使用 **DuckDB** 作為本機資料倉儲，以 **dbt** 管理資料轉換與資料品質測試。將在 notebook 與 Power BI 裡處理的清理和計算邏輯（日期解析、去除重複、折扣分組、月份欄位等），遷移到 dbt 中，以版本控制的 SQL 管理。
+使用 **DuckDB** 作為本機資料倉儲，以 **dbt** 管理資料轉換與資料品質測試，並用 **Airflow** 每天自動執行整條 pipeline。將在 notebook 與 Power BI 裡處理的清理和計算邏輯（日期解析、去除重複、折扣分組、月份欄位等），遷移到 dbt 中，以版本控制的 SQL 管理。
 
 ## 資料管線
 
@@ -26,6 +26,8 @@ flowchart LR
 - **DuckDB 2.0**：單一檔案的本機分析資料庫（`warehouse/superstore.duckdb`）
 - **dbt-core 1.12 + dbt-duckdb**：SQL 轉換、資料血緣、資料品質測試
 - **Python**：載入與匯出腳本
+- **Apache Airflow 3.4**：排程與工作流程管理
+- **Docker Compose**：在本機執行 Airflow
 - **Power BI**：視覺化
 
 ## 如何執行
@@ -82,7 +84,6 @@ erDiagram
 | 報表需要連續的日曆 | 從最早訂單日到最晚出貨日，每天產生一列 | `dim_date` |
 | 報表需要依折扣區間分析，但文字標籤直接排序會亂掉 | 新增 `discount_group`（無折扣 / 1-20% / 30% 以上），並加上數字欄位 `discount_group_order` 指定排序 | `fact_sales` |
 
-
 ## 資料品質測試
 
 `dbt build` 會執行 23 個測試：
@@ -123,10 +124,57 @@ superstore-de/
 ├── tests/                           # 自訂的資料品質測試
 ├── dbt_project.yml
 ├── profiles.yml
+├── airflow/
+│   ├── dags/superstore_pipeline.py  # 每日 pipeline DAG
+│   ├── Dockerfile                   # Airflow image + dbt 獨立 venv
+│   └── docker-compose.yaml
 └── requirements.txt
 ```
 
 `warehouse/`、`exports/`、`target/`、`logs/` 都是執行時產生的，已經列在 `.gitignore` 中。
+
+## 排程（Airflow）
+
+用 **Apache Airflow 3.4** 每天自動執行整條 pipeline。Airflow 以 Docker Compose 在本機執行，專案資料夾掛載進容器的 `/opt/project`，跟本機共用同一份 DuckDB 檔案。
+
+```mermaid
+flowchart LR
+    A[ingest_raw] --> B[dbt_build] --> C[export_for_powerbi]
+```
+
+| Task | 指令 | 做什麼 |
+|---|---|---|
+| `ingest_raw` | `python scripts/ingest.py` | 原始 CSV → `raw.superstore` |
+| `dbt_build` | `dbt build` | 建立 staging / marts，並執行 23 個資料品質測試 |
+| `export_for_powerbi` | `python scripts/export.py` | marts → `exports/*.csv` |
+
+**測試失敗時，錯誤的資料不會流到下游。** `dbt_build` 只要有一個測試失敗，task 就會失敗，`export_for_powerbi` 不會執行，Power BI 讀到的仍然是上一次通過測試的資料。這取代了手動執行時「測試沒過就不要匯出」的人工判斷。
+
+### 設計決策
+
+| 決策 | 原因 |
+|---|---|
+| dbt 裝在容器內獨立的 venv（`/opt/airflow/dbt_venv`） | Airflow 和 dbt 依賴許多相同的套件，但要求的版本不同，裝在同一個環境容易衝突 |
+| dbt 的 `target/`、`logs/` 寫到容器內的 `/tmp/dbt/` | 避免跟本機執行 dbt 時產生的檔案互相覆蓋 |
+| `catchup=False` | 資料是靜態的 CSV，不需要補跑過去的排程 |
+| 排程 `@daily` | 每天 UTC 00:00（台灣時間 08:00）執行 |
+
+### 如何執行
+
+```bash
+cd airflow
+
+# 讓容器以本機使用者身分寫檔，避免產生的檔案變成 root 擁有，第一次設定時才需要執行
+echo "AIRFLOW_UID=$(id -u)" > .env
+
+# 初始化 Airflow 的資料庫和管理員帳號
+docker compose up airflow-init
+
+# 建立映像檔並啟動所有服務
+docker compose up -d --build
+```
+
+打開 http://localhost:8080 （帳號、密碼皆為 `airflow`），啟用 `superstore_pipeline` 後按「觸發」。停止服務：`docker compose down`。
 
 ## 已知限制與後續可以做的事
 
@@ -134,3 +182,5 @@ superstore-de/
 - 代理鍵用 `||` 串接，任何欄位為 NULL 時，key 也會變成 NULL；目前資料沒有這種情況，之後可以改用 `dbt_utils.generate_surrogate_key`。
 - 外鍵欄位可以再加上 `not_null` 測試（`relationships` 測試會略過 NULL），並把 `ship_date` 也連到 `dim_date`。
 - 依照新版 dbt 的建議，把 `relationships` / `accepted_values` 的參數移到 `arguments:` 底下，消除棄用警告。
+- Airflow 和本機共用同一個 DuckDB 檔案，DuckDB 同一時間只允許一個程式寫入。DAG 執行時不要在本機跑 dbt，或用 DBeaver 等工具開著資料庫，否則會出現 lock 錯誤。
+
