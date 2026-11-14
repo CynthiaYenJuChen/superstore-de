@@ -186,5 +186,5 @@ docker compose up -d --build
 
 ## 與 superstore-analysis 的關係
 
-[superstore-analysis](連結) 負責探索資料、回答商業問題，並在 Power BI 建立儀表板。
+[superstore-analysis] 負責探索資料、回答商業問題，並在 Power BI 建立儀表板。
 本專案把其中的清理與計算邏輯改寫成可重複執行、經過測試的 pipeline，產出星狀模型供 BI 工具使用。
