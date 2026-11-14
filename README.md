@@ -184,3 +184,7 @@ docker compose up -d --build
 - 依照新版 dbt 的建議，把 `relationships` / `accepted_values` 的參數移到 `arguments:` 底下，消除棄用警告。
 - Airflow 和本機共用同一個 DuckDB 檔案，DuckDB 同一時間只允許一個程式寫入。DAG 執行時不要在本機跑 dbt，或用 DBeaver 等工具開著資料庫，否則會出現 lock 錯誤。
 
+## 與 superstore-analysis 的關係
+
+[superstore-analysis](連結) 負責探索資料、回答商業問題，並在 Power BI 建立儀表板。
+本專案把其中的清理與計算邏輯改寫成可重複執行、經過測試的 pipeline，產出星狀模型供 BI 工具使用。
